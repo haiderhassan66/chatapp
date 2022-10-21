@@ -189,6 +189,7 @@ public class MessagesAdapter extends RecyclerView.Adapter{
         public SendViewHolder(@NonNull View itemView) {
             super(itemView);
             binding = ItemSendBinding.bind(itemView);
+            //
         }
     }
 
