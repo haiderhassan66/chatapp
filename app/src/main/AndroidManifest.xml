@@ -12,8 +12,19 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.ChatApp"
         android:usesCleartextTraffic="true">
-        <activity android:name=".activities.SetupProfileActivity"></activity>
-        <activity android:name=".activities.ChatActivity"></activity>
+
+
+        <activity
+            android:name=".activities.GroupChatActivity"
+            android:exported="false">
+            <meta-data
+                android:name="android.app.lib_name"
+                android:value="" />
+        </activity>
+        <activity android:name=".activities.SetupProfileActivity" />
+        <activity
+            android:name=".activities.ChatActivity"
+            android:theme="@style/Theme.ChatApp.NoActionBar" />
         <activity
             android:name=".activities.OTPActivity"
             android:windowSoftInputMode="stateVisible" />
@@ -32,6 +43,28 @@
         <meta-data
             android:name="preloaded_fonts"
             android:resource="@array/preloaded_fonts" />
+        <!--
+ Set custom default icon. This is used when no icon is set for incoming notification messages.
+     See README(https://goo.gl/l4GJaQ) for more.
+        -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_send" />
+        <!--
+ Set color used with incoming notification messages. This is used when no color is set for the incoming
+             notification message. See README(https://goo.gl/6BKBk7) for more.
+        -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/green" />
+
+        <service
+            android:name=".MyFirebaseService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>

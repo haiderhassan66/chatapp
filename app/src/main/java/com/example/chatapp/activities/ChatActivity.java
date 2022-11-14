@@ -9,11 +9,21 @@ import android.app.ProgressDialog;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.util.Log;
 import android.view.View;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
+import com.android.volley.AuthFailureError;
+import com.android.volley.RequestQueue;
+import com.android.volley.Response;
+import com.android.volley.VolleyError;
+import com.android.volley.toolbox.JsonObjectRequest;
+import com.android.volley.toolbox.Volley;
+import com.bumptech.glide.Glide;
 import com.example.chatapp.R;
 import com.example.chatapp.adapter.MessagesAdapter;
 import com.example.chatapp.databinding.ActivityChatBinding;
@@ -30,11 +40,14 @@ import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.UploadTask;
 
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.HashMap;
+import java.util.Map;
 
 public class ChatActivity extends AppCompatActivity {
 
@@ -49,11 +62,15 @@ public class ChatActivity extends AppCompatActivity {
     String senderUid;
     String receiverUid;
 
+    String token, name;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         binding = ActivityChatBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
+
+        setSupportActionBar(binding.toolbar);
 
         dialog = new ProgressDialog(this);
         dialog.setMessage("Uploading Image...");
@@ -62,6 +79,21 @@ public class ChatActivity extends AppCompatActivity {
         senderUid = FirebaseAuth.getInstance().getUid();
 
         String name = getIntent().getStringExtra("name");
+        String profile = getIntent().getStringExtra("image");
+        String token = getIntent().getStringExtra("token");
+
+        binding.name.setText(name);
+        Glide.with(ChatActivity.this).load(profile)
+                .placeholder(R.drawable.avatar)
+                .into(binding.profile);
+
+        binding.imageView2.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                finish();
+            }
+        });
+
         receiverUid = getIntent().getStringExtra("uid");
 
         senderRoom = senderUid + receiverUid;
@@ -76,6 +108,28 @@ public class ChatActivity extends AppCompatActivity {
 
         database = FirebaseDatabase.getInstance();
         storage = FirebaseStorage.getInstance();
+
+        database.getReference().child("presence").child(receiverUid).addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                if(snapshot.exists()){
+                    String status = snapshot.getValue(String.class);
+                    if(!status.isEmpty()){
+                        if(status.equals("Offline")){
+                            binding.status.setVisibility(View.GONE);
+                        } else {
+                            binding.status.setText(status);
+                            binding.status.setVisibility(View.VISIBLE);
+                        }
+                    }
+                }
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+
+            }
+        });
 
         database.getReference().child("chats")
                 .child(senderRoom)
@@ -129,7 +183,7 @@ public class ChatActivity extends AppCompatActivity {
                                         .setValue(message).addOnSuccessListener(new OnSuccessListener<Void>() {
                                             @Override
                                             public void onSuccess(Void unused) {
-
+                                                sendNotification(name, message.getMessage(), token);
                                             }
                                         });
 
@@ -150,9 +204,79 @@ public class ChatActivity extends AppCompatActivity {
             }
         });
 
-        getSupportActionBar().setTitle(name);
+        Handler handler = new Handler();
+        binding.messageBox.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
 
-        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+            }
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                database.getReference().child("presence").child(senderUid).setValue("typing...");
+                handler.removeCallbacksAndMessages(null);
+                handler.postDelayed(userStoppedTyping,1000);
+            }
+
+            Runnable userStoppedTyping = new Runnable() {
+                @Override
+                public void run() {
+                    database.getReference().child("presence").child(senderUid).setValue("Online");
+                }
+            };
+        });
+
+        getSupportActionBar().setDisplayShowTitleEnabled(false);
+
+//        getSupportActionBar().setTitle(name);
+//
+//        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+    }
+
+    void sendNotification(String name, String message, String token) {
+        try {
+            RequestQueue queue = Volley.newRequestQueue(this);
+
+            String url = "https://fcm.googleapis.com/fcm/send";
+
+            JSONObject data = new JSONObject();
+            data.put("title", name);
+            data.put("body", message);
+            JSONObject notificationData = new JSONObject();
+            notificationData.put("notification", data);
+            notificationData.put("to", token);
+
+            JsonObjectRequest request = new JsonObjectRequest(url, notificationData, new Response.Listener<JSONObject>() {
+                @Override
+                public void onResponse(JSONObject response) {
+//                    Toast.makeText(ChatActivity.this, "success", Toast.LENGTH_SHORT).show();
+                }
+            }, new Response.ErrorListener() {
+                @Override
+                public void onErrorResponse(VolleyError error) {
+//                    Toast.makeText(ChatActivity.this, "having error", Toast.LENGTH_SHORT).show();
+                }
+            }) {
+                @Override
+                public Map<String, String> getHeaders() throws AuthFailureError {
+                    HashMap<String, String> map = new HashMap<>();
+                    String key = "Key=AAAAm3ALItw:APA91bGC8XAAZmSOniiPIgl39n51GSgoEnvIGH8NWBBrtdqW4halkf0fa3haj8-PurI_EplH4QugapWDYvDh8KapBmXxPPa0JnBhwW-VyjH95O2HztwT8_vTyYcfRuqSBsv2CUw5Di53 ";
+                    map.put("Authorization", key);
+                    map.put("Content-Type", "application/json");
+                    return map;
+                }
+            };
+
+            queue.add(request);
+
+        } catch (Exception ignored) {
+
+        }
     }
 
     @Override
@@ -222,6 +346,21 @@ public class ChatActivity extends AppCompatActivity {
             }
         }
     }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        String currentId = FirebaseAuth.getInstance().getUid();
+        database.getReference().child("presence").child(currentId).setValue("Online");
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        String currentId = FirebaseAuth.getInstance().getUid();
+        database.getReference().child("presence").child(currentId).setValue("Offline");
+    }
+
 
     @Override
     public boolean onSupportNavigateUp() {

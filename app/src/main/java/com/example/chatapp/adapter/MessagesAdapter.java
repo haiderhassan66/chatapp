@@ -1,17 +1,20 @@
 package com.example.chatapp.adapter;
 
+import android.app.AlertDialog;
 import android.content.Context;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
 import com.example.chatapp.R;
+import com.example.chatapp.databinding.DeleteDialogBinding;
 import com.example.chatapp.databinding.ItemRecieveBinding;
 import com.example.chatapp.databinding.ItemSendBinding;
 import com.example.chatapp.model.Message;
@@ -20,6 +23,8 @@ import com.github.pgreze.reactions.ReactionsConfig;
 import com.github.pgreze.reactions.ReactionsConfigBuilder;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.remoteconfig.FirebaseRemoteConfig;
+import com.google.firebase.remoteconfig.FirebaseRemoteConfigClientException;
 
 import java.util.ArrayList;
 
@@ -33,7 +38,10 @@ public class MessagesAdapter extends RecyclerView.Adapter{
 
     String senderRoom, receiverRoom;
 
+    FirebaseRemoteConfig remoteConfig;
+
     public MessagesAdapter(Context context, ArrayList<Message> messages, String senderRoom, String receiverRoom) {
+        remoteConfig = FirebaseRemoteConfig.getInstance();
         this.context = context;
         this.messages = messages;
         this.senderRoom = senderRoom;
@@ -78,19 +86,21 @@ public class MessagesAdapter extends RecyclerView.Adapter{
                 .build();
 
         ReactionPopup popup = new ReactionPopup(context, config, (pos) -> {
+            if (pos<0)
+                return false;
 //            Log.e("index",pos+"");
             if(holder.getClass() == SendViewHolder.class){
-                if(pos>=0){
+//                if(pos>=0){
                     SendViewHolder viewHolder = (SendViewHolder) holder;
                     viewHolder.binding.feeling.setImageResource(reactions[pos]);
                     viewHolder.binding.feeling.setVisibility(View.VISIBLE);
-                }
+//                }
             } else {
-                if(pos>=0){
+//                if(pos>=0){
                     RecieverViewHolder viewHolder = (RecieverViewHolder) holder;
                     viewHolder.binding.feeling.setImageResource(reactions[pos]);
                     viewHolder.binding.feeling.setVisibility(View.VISIBLE);
-                }
+//                }
             }
 
             message.setFeeling(pos);
@@ -130,7 +140,11 @@ public class MessagesAdapter extends RecyclerView.Adapter{
             viewHolder.binding.message.setOnTouchListener(new View.OnTouchListener() {
                 @Override
                 public boolean onTouch(View view, MotionEvent motionEvent) {
-                    popup.onTouch(view, motionEvent);
+                    boolean isFeelingsEnabled = remoteConfig.getBoolean("isFeelingsEnabled");
+                    if(isFeelingsEnabled)
+                        popup.onTouch(view, motionEvent);
+                    else
+                        Toast.makeText(context, "This feature is disabled temporarily", Toast.LENGTH_SHORT).show();
                     return false;
                 }
             });
@@ -138,6 +152,66 @@ public class MessagesAdapter extends RecyclerView.Adapter{
                 @Override
                 public boolean onTouch(View v, MotionEvent event) {
                     popup.onTouch(v, event);
+                    return false;
+                }
+            });
+
+            viewHolder.itemView.setOnLongClickListener(new View.OnLongClickListener() {
+                @Override
+                public boolean onLongClick(View v) {
+                    View view = LayoutInflater.from(context).inflate(R.layout.delete_dialog, null);
+                    DeleteDialogBinding binding = DeleteDialogBinding.bind(view);
+                    AlertDialog dialog = new AlertDialog.Builder(context)
+                            .setTitle("Delete Message")
+                            .setView(binding.getRoot())
+                            .create();
+
+                    if(remoteConfig.getBoolean("isEveryoneDeletionEnabled")) {
+                        binding.everyone.setVisibility(View.VISIBLE);
+                    } else {
+                        binding.everyone.setVisibility(View.GONE);
+                    }
+                    binding.everyone.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            message.setMessage("This message is removed.");
+                            message.setFeeling(-1);
+                            FirebaseDatabase.getInstance().getReference()
+                                    .child("chats")
+                                    .child(senderRoom)
+                                    .child("messages")
+                                    .child(message.getMessageId()).setValue(message);
+
+                            FirebaseDatabase.getInstance().getReference()
+                                    .child("chats")
+                                    .child(receiverRoom)
+                                    .child("messages")
+                                    .child(message.getMessageId()).setValue(message);
+                            dialog.dismiss();
+                        }
+                    });
+
+                    binding.delete.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            FirebaseDatabase.getInstance().getReference()
+                                    .child("chats")
+                                    .child(senderRoom)
+                                    .child("messages")
+                                    .child(message.getMessageId()).setValue(null);
+                            dialog.dismiss();
+                        }
+                    });
+
+                    binding.cancel.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            dialog.dismiss();
+                        }
+                    });
+
+                    dialog.show();
+
                     return false;
                 }
             });
@@ -161,7 +235,12 @@ public class MessagesAdapter extends RecyclerView.Adapter{
             viewHolder.binding.message.setOnTouchListener(new View.OnTouchListener() {
                 @Override
                 public boolean onTouch(View view, MotionEvent motionEvent) {
-                    popup.onTouch(view, motionEvent);
+                    FirebaseRemoteConfig remoteConfig = FirebaseRemoteConfig.getInstance();
+                    boolean isFeelingsEnabled = remoteConfig.getBoolean("isFeelingsEnabled");
+                    if(isFeelingsEnabled)
+                        popup.onTouch(view, motionEvent);
+                    else
+                        Toast.makeText(context, "This feature is disabled temporarily", Toast.LENGTH_SHORT).show();
                     return false;
                 }
 
@@ -170,6 +249,61 @@ public class MessagesAdapter extends RecyclerView.Adapter{
                 @Override
                 public boolean onTouch(View v, MotionEvent event) {
                     popup.onTouch(v, event);
+                    return false;
+                }
+            });
+
+            viewHolder.itemView.setOnLongClickListener(new View.OnLongClickListener() {
+                @Override
+                public boolean onLongClick(View v) {
+                    View view = LayoutInflater.from(context).inflate(R.layout.delete_dialog, null);
+                    DeleteDialogBinding binding = DeleteDialogBinding.bind(view);
+                    AlertDialog dialog = new AlertDialog.Builder(context)
+                            .setTitle("Delete Message")
+                            .setView(binding.getRoot())
+                            .create();
+
+                    binding.everyone.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            message.setMessage("This message is removed.");
+                            message.setFeeling(-1);
+                            FirebaseDatabase.getInstance().getReference()
+                                    .child("chats")
+                                    .child(senderRoom)
+                                    .child("messages")
+                                    .child(message.getMessageId()).setValue(message);
+
+                            FirebaseDatabase.getInstance().getReference()
+                                    .child("chats")
+                                    .child(receiverRoom)
+                                    .child("messages")
+                                    .child(message.getMessageId()).setValue(message);
+                            dialog.dismiss();
+                        }
+                    });
+
+                    binding.delete.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            FirebaseDatabase.getInstance().getReference()
+                                    .child("chats")
+                                    .child(senderRoom)
+                                    .child("messages")
+                                    .child(message.getMessageId()).setValue(null);
+                            dialog.dismiss();
+                        }
+                    });
+
+                    binding.cancel.setOnClickListener(new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            dialog.dismiss();
+                        }
+                    });
+
+                    dialog.show();
+
                     return false;
                 }
             });
